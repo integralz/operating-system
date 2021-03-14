@@ -28,8 +28,19 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy, name[30];
   tid_t tid;
+
+  for (int j = 0; j < strlen(file_name) + 1; ++j) {
+
+	  if (file_name[j] == ' ' || file_name[j] == '\0') {
+		  for (int z = 0; z < j; ++z) {
+			  name[z] = file_name[z];
+		  }
+		  name[j] = '\0';
+		  break;
+	  }
+  }
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -38,8 +49,10 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  if (filesys_open(name) == NULL)  return -1;
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -54,17 +67,68 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+
+  char word[30][30];
+ 
+  int length = 0;
+  int k = 0;
+  
+  for (int j = 0; j < strlen(file_name) + 1; ++j) {
+	 
+	  if (file_name[j] == ' ' || file_name[j] == '\0') {
+		 for (int z = 0; z < j - k; ++z) {
+			word[length][z] = file_name[k + z];
+		  }
+		 word[length][j - k] = '\0';
+		 if (j != k) {
+			 ++length;
+		 }
+		 k = j + 1;
+	  }
+  }
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+ 
+  success = load (word[0], &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+
+  if (success != 0) {
+	  void **esp = &if_.esp;
+	  int siz, arg_size = 0, address[100];
+	  for (int i = length - 1; i >= 0; --i) {
+		  siz = (strlen(word[i]) + 1);
+		  arg_size += siz;
+		  *esp -= siz;
+		  memcpy(*esp, word[i], siz);
+		  address[i] = (int)(*esp);
+	  }
+	  
+	  *esp -= 8 - (arg_size % 4); 
+	  *(int*)(*esp) = 0;
+
+	  for (int i = length - 1; i >= 0; --i) {
+		  *esp -= 4;
+		  memcpy(*esp, address + i, 4);
+	  }
+
+	  int* pointer = if_.esp;
+	  *esp -= 4;
+	  memcpy(*esp, &pointer, 4);
+
+	  *esp -= 4;
+	  *(int*)*esp = length;
+
+	  *esp -= 4;
+	  *(int*)(*esp) = 0;
+  }
+  else  thread_exit();
+  
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -88,32 +152,48 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+	struct thread* t = NULL;
+	int ex_stat;
+	struct list_elem* e = list_begin(&(thread_current()->ch));
+	while(e != list_end(&(thread_current()->ch))){
+		t = list_entry(e, struct thread, ch_elem);
+		if (child_tid == t->tid) {
+			sema_down(&(t->ch_lock));
+			sema_up(&(t->me_lock));
+			ex_stat = t->exit_status;
+			list_remove(&(t->ch_elem));
+			return ex_stat;
+		}
+		e = list_next(e);
+	}
+	return -1;
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
-  struct thread *cur = thread_current ();
-  uint32_t *pd;
+	struct thread *cur = thread_current();
+	uint32_t *pd;
 
-  /* Destroy the current process's page directory and switch back
-     to the kernel-only page directory. */
-  pd = cur->pagedir;
-  if (pd != NULL) 
-    {
-      /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-      cur->pagedir = NULL;
-      pagedir_activate (NULL);
-      pagedir_destroy (pd);
-    }
+	/* Destroy the current process's page directory and switch back
+	   to the kernel-only page directory. */
+	pd = cur->pagedir;
+	if (pd != NULL)
+	{
+		/* Correct ordering here is crucial.  We must set
+		   cur->pagedir to NULL before switching page directories,
+		   so that a timer interrupt can't switch back to the
+		   process page directory.  We must activate the base page
+		   directory before destroying the process's page
+		   directory, or our active page directory will be one
+		   that's been freed (and cleared). */
+		cur->pagedir = NULL;
+		pagedir_activate(NULL);
+		pagedir_destroy(pd);
+	}
+	sema_up(&(cur->ch_lock));
+	sema_down(&(cur->me_lock));
 }
 
 /* Sets up the CPU for running user code in the current
@@ -140,7 +220,7 @@ typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
 typedef uint16_t Elf32_Half;
 
 /* For use with ELF types in printf(). */
-#define PE32Wx PRIx32   /* Print Elf32_Word in hexadecimal. */
+#define PE32Wx PRIx32   /* Print Elf32_Word in \adecimal. */
 #define PE32Ax PRIx32   /* Print Elf32_Addr in hexadecimal. */
 #define PE32Ox PRIx32   /* Print Elf32_Off in hexadecimal. */
 #define PE32Hx PRIx16   /* Print Elf32_Half in hexadecimal. */
@@ -214,7 +294,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
-
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 

@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -82,24 +83,27 @@ typedef int tid_t;
    blocked state is on a semaphore wait list. */
 struct thread
   {
-    /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+	/* Owned by thread.c. */
+	tid_t tid;                          /* Thread identifier. */
+	enum thread_status status;          /* Thread state. */
+	char name[16];                      /* Name (for debugging purposes). */
+	uint8_t *stack;                     /* Saved stack pointer. */
+	int priority;                       /* Priority. */
+	struct list_elem allelem;           /* List element for all threads list. */
 
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+	/* Shared between thread.c and synch.c. */
+	struct list_elem elem;              /* List element. */
 
-#ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
-#endif
+	/* Owned by userprog/process.c. */
+	uint32_t *pagedir;                  /* Page directory. */
+	struct list ch;
+	struct list_elem ch_elem;
+	struct semaphore ch_lock;
+	struct semaphore me_lock;
+	int exit_status;
 
-    /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
+	/* Owned by thread.c. */
+	unsigned magic;                     /* Detects stack overflow. */
   };
 
 /* If false (default), use round-robin scheduler.
