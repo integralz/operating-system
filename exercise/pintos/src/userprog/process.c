@@ -30,6 +30,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy, name[30];
   tid_t tid;
+  struct thread* t;
 
   for (int j = 0; j < strlen(file_name) + 1; ++j) {
 
@@ -53,8 +54,12 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
+
+  sema_down(&thread_current()->pro_init);
+
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+	  palloc_free_page(fn_copy);
+
   return tid;
 }
 
@@ -128,7 +133,9 @@ start_process (void *file_name_)
 	  *(int*)(*esp) = 0;
   }
   else  thread_exit();
-  
+  sema_up(&thread_current()->parent->pro_init);
+
+
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -159,9 +166,9 @@ process_wait (tid_t child_tid UNUSED)
 		t = list_entry(e, struct thread, ch_elem);
 		if (child_tid == t->tid) {
 			sema_down(&(t->ch_lock));
-			sema_up(&(t->me_lock));
 			ex_stat = t->exit_status;
 			list_remove(&(t->ch_elem));
+			sema_up(&(t->me_lock));
 			return ex_stat;
 		}
 		e = list_next(e);

@@ -96,12 +96,15 @@ struct thread
 
 	/* Owned by userprog/process.c. */
 	uint32_t *pagedir;                  /* Page directory. */
+	struct file* file_des[256];
 	struct list ch;
 	struct list_elem ch_elem;
+
+	struct thread *parent;
 	struct semaphore ch_lock;
 	struct semaphore me_lock;
+	struct semaphore pro_init;
 	int exit_status;
-
 	/* Owned by thread.c. */
 	unsigned magic;                     /* Detects stack overflow. */
   };

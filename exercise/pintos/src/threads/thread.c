@@ -463,6 +463,11 @@ init_thread (struct thread *t, const char *name, int priority)
 	t->magic = THREAD_MAGIC;
 	list_push_back(&all_list, &t->allelem);
 
+	for (int i = 0; i < 256; ++i) {
+		t->file_des[i] = NULL;
+	}
+	t->parent = running_thread();
+	sema_init(&(t->pro_init), 0);
 	sema_init(&(t->ch_lock), 0);
 	sema_init(&(t->me_lock), 0);
 	list_init(&(t->ch));
