@@ -105,6 +105,10 @@ struct thread
 	struct semaphore me_lock;
 	struct semaphore pro_init;
 	int exit_status;
+	
+	int64_t wake;
+	int nice;
+	int recent;
 	/* Owned by thread.c. */
 	unsigned magic;                     /* Detects stack overflow. */
   };
@@ -113,6 +117,7 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+extern bool thread_aging;
 
 void thread_init (void);
 void thread_start (void);

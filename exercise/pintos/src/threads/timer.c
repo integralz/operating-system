@@ -198,14 +198,13 @@ timer_interrupt (struct intr_frame *args UNUSED)
 	
 	if (thread_aging || thread_mlfqs) {
 		thread_current()->recent = thread_current()->recent + (1<<14);
+		if (timer_ticks() % TIMER_FREQ == 0) {
+			update_load_avg_and_recent_cpu();
+    }
 		if (timer_ticks() % 4 == 0) {
 			update_priority();
-		}  
-		if (timer_ticks() % TIMER_FREQ == 0) {
-			
-			update();
-		} 
-	}
+    }   
+  }
   thread_tick ();
 }
 

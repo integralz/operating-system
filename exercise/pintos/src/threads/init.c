@@ -252,10 +252,12 @@ parse_options (char **argv)
         swap_bdev_name = value;
 #endif
 #endif
+	  else if (!strcmp (name, "-aging"))
+        thread_aging = true;
       else if (!strcmp (name, "-rs"))
         random_init (atoi (value));
       else if (!strcmp (name, "-mlfqs"))
-        thread_mlfqs = true;
+        thread_mlfqs = true;   
 #ifdef USERPROG
       else if (!strcmp (name, "-ul"))
         user_page_limit = atoi (value);
